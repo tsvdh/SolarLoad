@@ -1,0 +1,40 @@
+{
+  "title": {
+    "en": "Recent Sun in Zoetermeer",
+    "nl": "Recente zon in Zoetermeer"
+  },
+  "hint": {
+    "en": "The amount of sun in Zoetermeer for the last hour or less",
+    "nl": "The hoeveelheid zon in Zoetermeer tijdens het afgelopen uur of korter"
+  },
+  "titleFormatted": {
+    "en": "Sun in Zoetermeer for [[duration]] above [[radiation]]",
+    "nl": "Zon in Zoetermeer [[duration]] meer dan [[radiation]]"
+  },
+  "args": [
+    {
+      "type": "range",
+      "name": "duration",
+      "title": {
+        "en": "Duration",
+        "nl": "Duur"
+      },
+      "min": 5,
+      "max": 60,
+      "step": 5,
+      "label": " min"
+    },
+    {
+      "type": "range",
+      "name": "radiation",
+      "title": {
+        "en": "Radiation",
+        "nl": "Straling"
+      },
+      "min": 0,
+      "max": 1000,
+      "step": 20,
+      "label": " W/m2"
+    }
+  ]
+}

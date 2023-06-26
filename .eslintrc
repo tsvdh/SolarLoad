@@ -1,0 +1,8 @@
+{
+  "extends": "athom/homey-app",
+  "rules": {
+    "indent": ["error", 4],
+    "strict": "off",
+    "import/no-extraneous-dependencies": "off"
+  }
+}

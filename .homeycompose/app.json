@@ -1,0 +1,28 @@
+{
+  "id": "org.tsvdh.solar-load",
+  "version": "0.1.0",
+  "compatibility": ">=5.0.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "Solar Load"
+  },
+  "description": {
+    "en": "Provides information about recent solar load"
+  },
+  "category": [
+    "climate"
+  ],
+  "permissions": [],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "Tobias Van den Hurk",
+    "email": "tsvdhurk@gmail.com"
+  }
+}
