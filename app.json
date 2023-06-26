@@ -22,6 +22,7 @@
     "large": "/assets/images/large.png",
     "xlarge": "/assets/images/xlarge.png"
   },
+  "brandColor": "#e5bf17",
   "author": {
     "name": "Tobias Van den Hurk",
     "email": "tsvdhurk@gmail.com"
@@ -30,16 +31,16 @@
     "conditions": [
       {
         "title": {
-          "en": "Recent Sun in Zoetermeer",
+          "en": "Recent sun in Zoetermeer",
           "nl": "Recente zon in Zoetermeer"
+        },
+        "titleFormatted": {
+          "en": "Sun in Zoetermeer [[duration]] !{{above|below}} [[radiation]]",
+          "nl": "Zon in Zoetermeer [[duration]] !{{meer dan|minder dan}} [[radiation]]"
         },
         "hint": {
           "en": "The amount of sun in Zoetermeer for the last hour or less",
           "nl": "The hoeveelheid zon in Zoetermeer tijdens het afgelopen uur of korter"
-        },
-        "titleFormatted": {
-          "en": "Sun in Zoetermeer for [[duration]] above [[radiation]]",
-          "nl": "Zon in Zoetermeer [[duration]] meer dan [[radiation]]"
         },
         "args": [
           {
@@ -67,7 +68,60 @@
             "label": " W/m2"
           }
         ],
-        "id": "sun_zoetermeer"
+        "id": "sun_zoetermeer_more_less"
+      },
+      {
+        "title": {
+          "en": "Recent sun in Zoetermeer",
+          "nl": "Recente zon in Zoetermeer"
+        },
+        "titleFormatted": {
+          "en": "Sun in Zoetermeer [[duration]] !{{between|not between}} [[radiationLow]] and [[radiationHigh]]",
+          "nl": "Zon in Zoetermeer [[duration]] !{{tussen|niet tussen}} [[radiationLow]] en [[radiationHigh]]"
+        },
+        "hint": {
+          "en": "The amount of sun in Zoetermeer for the last hour or less",
+          "nl": "The hoeveelheid zon in Zoetermeer tijdens het afgelopen uur of korter"
+        },
+        "args": [
+          {
+            "type": "range",
+            "name": "duration",
+            "title": {
+              "en": "Duration",
+              "nl": "Duur"
+            },
+            "min": 5,
+            "max": 60,
+            "step": 5,
+            "label": " min"
+          },
+          {
+            "type": "range",
+            "name": "radiationLow",
+            "title": {
+              "en": "Radiation",
+              "nl": "Straling"
+            },
+            "min": 0,
+            "max": 1000,
+            "step": 20,
+            "label": " W/m2"
+          },
+          {
+            "type": "range",
+            "name": "radiationHigh",
+            "title": {
+              "en": "Radiation",
+              "nl": "Straling"
+            },
+            "min": 0,
+            "max": 1000,
+            "step": 20,
+            "label": " W/m2"
+          }
+        ],
+        "id": "sun_zoetermeer_range"
       }
     ]
   }

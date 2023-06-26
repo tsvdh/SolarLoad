@@ -21,6 +21,7 @@
     "large": "/assets/images/large.png",
     "xlarge": "/assets/images/xlarge.png"
   },
+  "brandColor": "#e5bf17",
   "author": {
     "name": "Tobias Van den Hurk",
     "email": "tsvdhurk@gmail.com"

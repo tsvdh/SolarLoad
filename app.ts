@@ -1,9 +1,15 @@
 import Homey from 'homey';
 import axios from 'axios';
 
-type SunCondition = {
+type SunConditionMore = {
     duration: number;
     radiation: number;
+}
+
+type SunConditionBetween = {
+    duration: number;
+    radiationLow: number;
+    radiationHigh: number;
 }
 
 class App extends Homey.App {
@@ -12,6 +18,18 @@ class App extends Homey.App {
 
     dataURL = 'https://www.weerzoetermeer.nl/clientraw/clientraw.txt';
     values: number[] = [];
+
+    getAverageValue(duration: number) {
+        const wantedValues = this.values.slice(0, duration);
+
+        let average = wantedValues.reduce((accumulator, current) => {
+            return accumulator + current;
+        });
+
+        average /= duration;
+
+        return average;
+    }
 
     /**
     * onInit is called when the app is initialized.
@@ -26,22 +44,22 @@ class App extends Homey.App {
             if (this.values.length > 60) {
                 this.values.pop();
             }
-            this.log(this.values);
         }, 1000 * 60);
 
-        this.log('Capturing data flow');
+        this.log('Capturing data flow...');
 
-        const sunCondition = this.homey.flow.getConditionCard('sun_zoetermeer');
-        sunCondition.registerRunListener((args: SunCondition, state) => {
-            const wantedValues = this.values.slice(0, args.duration);
-
-            let average = wantedValues.reduce((accumulator, current) => {
-                return accumulator + current;
-            });
-
-            average /= args.duration;
+        const sunConditionMore = this.homey.flow.getConditionCard('sun_zoetermeer_more_less');
+        sunConditionMore.registerRunListener((args: SunConditionMore, state) => {
+            const average = this.getAverageValue(args.duration);
 
             return average > args.radiation;
+        });
+
+        const sunConditionBetween = this.homey.flow.getConditionCard('sun_zoetermeer_range');
+        sunConditionBetween.registerRunListener((args: SunConditionBetween, state) => {
+            const average = this.getAverageValue(args.duration);
+
+            return (args.radiationLow < average) && (average < args.radiationHigh);
         });
 
         this.log('Solar Load initialized');
