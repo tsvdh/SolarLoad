@@ -3,6 +3,7 @@
   "rules": {
     "indent": ["error", 4],
     "strict": "off",
-    "import/no-extraneous-dependencies": "off"
+    "import/no-extraneous-dependencies": "off",
+    "no-trailing-spaces": "warn"
   }
 }
