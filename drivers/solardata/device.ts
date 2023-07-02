@@ -21,8 +21,12 @@ class SolarDevice extends Homey.Device {
 
     timeFrames = [5, 10, 15, 30, 60];
 
-    getAverageValue(duration: number) {
+    getAverageValue(duration: number) : number | null {
         duration = Math.min(duration, this.values.length);
+
+        if (duration === 0) {
+            return null;
+        }
 
         const wantedValues = this.values.slice(0, duration);
 
@@ -92,17 +96,21 @@ class SolarDevice extends Homey.Device {
         this.log('Connected to data flow...');
 
         const sunConditionMore = this.homey.flow.getConditionCard('sun_more_less');
-        sunConditionMore.registerRunListener((args: SunConditionMore, state) => {
+        sunConditionMore.registerRunListener((args: SunConditionMore) => {
             const average = this.getAverageValue(args.duration);
 
-            return average > args.radiation;
+            return average == null
+                ? false
+                : average > args.radiation;
         });
 
         const sunConditionBetween = this.homey.flow.getConditionCard('sun_range');
-        sunConditionBetween.registerRunListener((args: SunConditionBetween, state) => {
+        sunConditionBetween.registerRunListener((args: SunConditionBetween) => {
             const average = this.getAverageValue(args.duration);
 
-            return (args.radiationLow < average) && (average < args.radiationHigh);
+            return average == null
+                ? false
+                : (args.radiationLow < average) && (average < args.radiationHigh);
         });
 
         this.log(`${this.getName()} has been initialized`);
