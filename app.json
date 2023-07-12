@@ -170,5 +170,17 @@
       },
       "id": "solardata"
     }
-  ]
+  ],
+  "capabilities": {
+    "counter": {
+      "type": "number",
+      "title": {
+        "en": "Counter capability",
+        "nl": "Tel vermogen"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor"
+    }
+  }
 }

@@ -56,6 +56,15 @@ class SolarDevice extends Homey.Device {
             },
         });
 
+        await this.addCapability('counter');
+        await this.setCapabilityOptions('counter', {
+            title: {
+                en: 'Data failures',
+                nl: 'Data fouten',
+            },
+        });
+        await this.setCapabilityValue('counter', 0);
+
         for (const timeFrame of this.timeFrames) {
             const id = `measure_luminance.${timeFrame}min`;
             await this.addCapability(id);
@@ -71,8 +80,20 @@ class SolarDevice extends Homey.Device {
 
         this.log('Added capabilities');
 
-        const getData = async () => {
-            const rawData = await axios.get<string>(this.dataURL).then((res) => res.data);
+        const getOnlineData = async () => {
+            const rawData: string | null = await axios.get<string>(this.dataURL)
+                .then((res) => res.data)
+                .catch((err) => {
+                    this.log(err);
+                    return null;
+                });
+
+            if (rawData == null) {
+                const faults: number = this.getCapabilityValue('counter');
+                await this.setCapabilityValue('counter', faults + 1);
+
+                return;
+            }
 
             const newValue = parseFloat(rawData.split(' ')[127]);
 
@@ -90,8 +111,8 @@ class SolarDevice extends Homey.Device {
             }
         };
 
-        await getData();
-        this.homey.setInterval(getData, 1000 * 60);
+        await getOnlineData();
+        this.homey.setInterval(getOnlineData, 1000 * 60);
 
         this.log('Connected to data flow...');
 
