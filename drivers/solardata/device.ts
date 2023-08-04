@@ -1,5 +1,6 @@
 import axios from 'axios';
 import Homey from 'homey';
+import { Collection, MongoClient } from 'mongodb';
 
 type SunConditionMore = {
     duration: number;
@@ -12,31 +13,79 @@ type SunConditionBetween = {
     radiationHigh: number;
 }
 
+type Measurement = {
+    value: number;
+    location: string;
+    timestamp: Date;
+}
+
 class SolarDevice extends Homey.Device {
 
     // get value every minute, store values of last hour
 
     dataURL = 'https://www.weerzoetermeer.nl/clientraw/clientraw.txt';
-    values: number[] = [];
+    dbURI = `mongodb+srv://admin:${Homey.env.MONGO_PASSWORD}@cluster0.jwqp0hp.mongodb.net/?retryWrites=true&w=majority`
+
+    solarCollection: Collection<Measurement> | undefined;
+
+    measurementsCache: Measurement[] = [];
 
     timeFrames = [5, 10, 15, 30, 60];
 
-    getAverageValue(duration: number) : number | null {
-        duration = Math.min(duration, this.values.length);
+    getAverageValue(duration: number) : number {
+        duration = Math.min(duration, this.measurementsCache.length);
 
-        if (duration === 0) {
-            return null;
-        }
+        const wantedValues = this.measurementsCache.slice(0, duration);
 
-        const wantedValues = this.values.slice(0, duration);
-
-        let average = wantedValues.reduce((accumulator, current) => {
-            return accumulator + current;
-        });
+        let average = wantedValues
+            .map((measurement) => measurement.value)
+            .reduce((accumulator, current) => accumulator + current);
 
         average /= duration;
 
         return average;
+    }
+
+    async addToDB(measurement: number) {
+        await this.solarCollection!.insertOne({
+            value: measurement,
+            location: 'Zoetermeer',
+            timestamp: new Date(),
+        });
+    }
+
+    async getDBValues(): Promise<Measurement[]> {
+        const documents = await this.solarCollection!.find({ location: 'Zoetermeer' }).toArray();
+        return documents
+            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    }
+
+    async refreshState(dataText: string) {
+        const newValue = parseFloat(dataText.split(' ')[127]);
+
+        await this.addToDB(newValue);
+
+        this.measurementsCache = await this.getDBValues();
+
+        await this.setCapabilityValue('measure_luminance', newValue);
+
+        for (const timeFrame of this.timeFrames) {
+            if (timeFrame <= this.measurementsCache.length) {
+                await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageValue(timeFrame));
+            }
+        }
+
+        if (this.measurementsCache.length < 2) {
+            return;
+        }
+
+        const timeBetweenMeasurements = (this.measurementsCache[0].timestamp.getTime() - this.measurementsCache[1].timestamp.getTime()) / 1000;
+
+        this.log(timeBetweenMeasurements);
+
+        if (timeBetweenMeasurements > 70) {
+            await this.setCapabilityValue('counter', this.getCapabilityValue('counter') + 1);
+        }
     }
 
     /**
@@ -80,39 +129,23 @@ class SolarDevice extends Homey.Device {
 
         this.log('Added capabilities');
 
-        const getOnlineData = async () => {
-            const rawData: string | null = await axios.get<string>(this.dataURL)
-                .then((res) => res.data)
-                .catch((err) => {
-                    this.log(err);
-                    return null;
-                });
+        const client = new MongoClient(this.dbURI);
+        await client.connect();
 
-            if (rawData == null) {
-                const faults: number = this.getCapabilityValue('counter');
-                await this.setCapabilityValue('counter', faults + 1);
+        const db = await client.db('Measurements');
+        await db.command({ ping: 1 });
 
-                return;
-            }
+        this.solarCollection = await db.collection<Measurement>('Solar');
 
-            const newValue = parseFloat(rawData.split(' ')[127]);
+        this.log('Connected to DB');
 
-            this.values.unshift(newValue);
-            if (this.values.length > 60) {
-                this.values.pop();
-            }
-
-            await this.setCapabilityValue('measure_luminance', newValue);
-
-            for (const timeFrame of this.timeFrames) {
-                if (timeFrame <= this.values.length) {
-                    await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageValue(timeFrame));
-                }
-            }
+        const updater = async () => {
+            const res = await axios.get<string>(this.dataURL);
+            await this.refreshState(res.data);
         };
 
-        await getOnlineData();
-        this.homey.setInterval(getOnlineData, 1000 * 60);
+        await updater();
+        this.homey.setInterval(updater, 1000 * 60);
 
         this.log('Connected to data flow...');
 
@@ -120,18 +153,14 @@ class SolarDevice extends Homey.Device {
         sunConditionMore.registerRunListener((args: SunConditionMore) => {
             const average = this.getAverageValue(args.duration);
 
-            return average == null
-                ? false
-                : average > args.radiation;
+            return average > args.radiation;
         });
 
         const sunConditionBetween = this.homey.flow.getConditionCard('sun_range');
         sunConditionBetween.registerRunListener((args: SunConditionBetween) => {
             const average = this.getAverageValue(args.duration);
 
-            return average == null
-                ? false
-                : (args.radiationLow < average) && (average < args.radiationHigh);
+            return (args.radiationLow < average) && (average < args.radiationHigh);
         });
 
         this.log(`${this.getName()} has been initialized`);

@@ -4,6 +4,7 @@
     "indent": ["error", 4],
     "strict": "off",
     "import/no-extraneous-dependencies": "off",
-    "no-trailing-spaces": "warn"
+    "no-trailing-spaces": "off",
+    "@typescript-eslint/no-non-null-assertion": "off"
   }
 }
