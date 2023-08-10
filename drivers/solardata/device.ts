@@ -63,6 +63,10 @@ class SolarDevice extends Homey.Device {
     async refreshState(dataText: string) {
         const newValue = parseFloat(dataText.split(' ')[127]);
 
+        if (Number.isNaN(newValue)) {
+            return;
+        }
+
         await this.addToDB(newValue);
 
         this.measurementsCache = await this.getDBValues();
@@ -70,21 +74,7 @@ class SolarDevice extends Homey.Device {
         await this.setCapabilityValue('measure_luminance', newValue);
 
         for (const timeFrame of this.timeFrames) {
-            if (timeFrame <= this.measurementsCache.length) {
-                await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageValue(timeFrame));
-            }
-        }
-
-        if (this.measurementsCache.length < 2) {
-            return;
-        }
-
-        const timeBetweenMeasurements = (this.measurementsCache[0].timestamp.getTime() - this.measurementsCache[1].timestamp.getTime()) / 1000;
-
-        this.log(timeBetweenMeasurements);
-
-        if (timeBetweenMeasurements > 70) {
-            await this.setCapabilityValue('counter', this.getCapabilityValue('counter') + 1);
+            await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageValue(timeFrame));
         }
     }
 
@@ -105,15 +95,6 @@ class SolarDevice extends Homey.Device {
             },
         });
 
-        await this.addCapability('counter');
-        await this.setCapabilityOptions('counter', {
-            title: {
-                en: 'Data failures',
-                nl: 'Data fouten',
-            },
-        });
-        await this.setCapabilityValue('counter', 0);
-
         for (const timeFrame of this.timeFrames) {
             const id = `measure_luminance.${timeFrame}min`;
             await this.addCapability(id);
@@ -132,10 +113,10 @@ class SolarDevice extends Homey.Device {
         const client = new MongoClient(this.dbURI);
         await client.connect();
 
-        const db = await client.db('Measurements');
+        const db = client.db('Measurements');
         await db.command({ ping: 1 });
 
-        this.solarCollection = await db.collection<Measurement>('Solar');
+        this.solarCollection = db.collection<Measurement>('Solar');
 
         this.log('Connected to DB');
 
@@ -150,15 +131,15 @@ class SolarDevice extends Homey.Device {
         this.log('Connected to data flow...');
 
         const sunConditionMore = this.homey.flow.getConditionCard('sun_more_less');
-        sunConditionMore.registerRunListener((args: SunConditionMore) => {
-            const average = this.getAverageValue(args.duration);
+        sunConditionMore.registerRunListener(async (args: SunConditionMore) => {
+            const average = await this.getAverageValue(args.duration);
 
             return average > args.radiation;
         });
 
         const sunConditionBetween = this.homey.flow.getConditionCard('sun_range');
-        sunConditionBetween.registerRunListener((args: SunConditionBetween) => {
-            const average = this.getAverageValue(args.duration);
+        sunConditionBetween.registerRunListener(async (args: SunConditionBetween) => {
+            const average = await this.getAverageValue(args.duration);
 
             return (args.radiationLow < average) && (average < args.radiationHigh);
         });

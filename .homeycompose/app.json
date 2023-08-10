@@ -1,6 +1,6 @@
 {
   "id": "org.tsvdh.solar-load",
-  "version": "0.4.0",
+  "version": "0.4.4",
   "compatibility": ">=5.0.0",
   "sdk": 3,
   "platforms": [
