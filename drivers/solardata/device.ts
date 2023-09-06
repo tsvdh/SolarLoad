@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Homey from 'homey';
 import { Collection, MongoClient } from 'mongodb';
+import * as SunCalc from 'suncalc';
 
 type SunConditionMore = {
     duration: number;
@@ -26,11 +27,22 @@ class SolarDevice extends Homey.Device {
     dataURL = 'https://www.weerzoetermeer.nl/clientraw/clientraw.txt';
     dbURI = `mongodb+srv://admin:${Homey.env.MONGO_PASSWORD}@cluster0.jwqp0hp.mongodb.net/?retryWrites=true&w=majority`
 
+    lat = 52.061187262688705
+    lng = 4.493821243730712
+
     solarCollection: Collection<Measurement> | undefined;
 
     measurementsCache: Measurement[] = [];
 
     timeFrames = [5, 10, 15, 30, 60];
+
+    correctionPoints = new Map<number, number>([
+        [10, 2],
+        [15, 3],
+        [20, 2.5],
+        [25, 2],
+        [40, 1],
+    ]);
 
     getAverageValue(duration: number) : number {
         duration = Math.min(duration, this.measurementsCache.length);
@@ -60,18 +72,63 @@ class SolarDevice extends Homey.Device {
             .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     }
 
+    getCorrectionValue(angle: number): number {
+        let minAngle = Number.MAX_SAFE_INTEGER;
+        let maxAngle = Number.MIN_SAFE_INTEGER;
+
+        this.correctionPoints.forEach((value, key) => {
+            if (key < minAngle) {
+                minAngle = key;
+            }
+            if (key > maxAngle) {
+                maxAngle = key;
+            }
+        });
+
+        let angleBelow = minAngle;
+        let angleAbove = maxAngle;
+
+        this.correctionPoints.forEach((value, key) => {
+            if (key > angleBelow && key <= angle) {
+                angleBelow = key;
+            }
+            if (key < angleAbove && key >= angle) {
+                angleAbove = key;
+            }
+        });
+
+        const belowMult = this.correctionPoints.get(angleBelow)!;
+        const aboveMult = this.correctionPoints.get(angleAbove)!;
+
+        const angleDiff = angleAbove - angleBelow;
+        const ratio = angleDiff === 0 ? 0 : (angle - angleBelow) / angleDiff;
+
+        this.log(ratio);
+
+        return belowMult + ratio * (aboveMult - belowMult);
+    }
+
     async refreshState(dataText: string) {
-        const newValue = parseFloat(dataText.split(' ')[127]);
+        let newValue = parseFloat(dataText.split(' ')[127]);
 
         if (Number.isNaN(newValue)) {
             return;
         }
 
+        await this.setCapabilityValue('measure_luminance', newValue);
+
+        let degrees = SunCalc.getPosition(new Date(), this.lat, this.lng).altitude;
+        degrees *= 180 / Math.PI;
+        degrees = Math.max(0, degrees);
+
+        await this.setCapabilityValue('measure_wind_angle', degrees);
+
+        newValue *= this.getCorrectionValue(degrees);
         await this.addToDB(newValue);
 
-        this.measurementsCache = await this.getDBValues();
+        await this.setCapabilityValue('measure_luminance.corrected', newValue);
 
-        await this.setCapabilityValue('measure_luminance', newValue);
+        this.measurementsCache = await this.getDBValues();
 
         for (const timeFrame of this.timeFrames) {
             await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageValue(timeFrame));
@@ -107,6 +164,25 @@ class SolarDevice extends Homey.Device {
                 },
             });
         }
+
+        await this.addCapability('measure_wind_angle');
+        await this.setCapabilityOptions('measure_wind_angle', {
+            decimals: 2,
+            units: '\u00B0',
+            title: {
+                en: 'Sun angle',
+                nl: 'Zon hoek',
+            },
+        });
+
+        await this.addCapability('measure_luminance.corrected');
+        await this.setCapabilityOptions('measure_luminance.corrected', {
+            ...options,
+            title: {
+                en: 'Corrected luminance now',
+                nl: 'Aangepaste helderheid nu',
+            },
+        });
 
         this.log('Added capabilities');
 
