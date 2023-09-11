@@ -37,11 +37,12 @@ class SolarDevice extends Homey.Device {
     timeFrames = [5, 10, 15, 30, 60];
 
     correctionPoints = new Map<number, number>([
-        [10, 2],
+        [5, 5],
+        [10, 4],
         [15, 3],
         [20, 2.5],
         [25, 2],
-        [40, 1],
+        [45, 1.33],
     ]);
 
     getAverageValue(duration: number) : number {
