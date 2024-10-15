@@ -118,16 +118,19 @@ class SolarDevice extends Homey.Device {
 
         await this.setCapabilityValue('measure_luminance', newValue);
 
-        let degrees = SunCalc.getPosition(new Date(), this.lat, this.lng).altitude;
-        degrees *= 180 / Math.PI;
-        degrees = Math.max(0, degrees);
+        let angleDegrees = SunCalc.getPosition(new Date(), this.lat, this.lng).altitude;
+        angleDegrees *= 180 / Math.PI;
+        angleDegrees = Math.max(0, angleDegrees);
+        await this.setCapabilityValue('measure_wind_angle', angleDegrees);
 
-        await this.setCapabilityValue('measure_wind_angle', degrees);
-
-        newValue *= this.getCorrectionValue(degrees);
+        newValue *= this.getCorrectionValue(angleDegrees);
         await this.addToDB(newValue);
-
         await this.setCapabilityValue('measure_luminance.corrected', newValue);
+
+        let azimuthDegrees = SunCalc.getPosition(new Date(), this.lat, this.lng).azimuth * (180 / Math.PI);
+        // convert to suncalc website convention
+        azimuthDegrees = (azimuthDegrees + 180) % 360;
+        await this.setCapabilityValue('measure_gust_angle', azimuthDegrees);
 
         this.measurementsCache = await this.getDBValues();
 
@@ -168,7 +171,7 @@ class SolarDevice extends Homey.Device {
 
         await this.addCapability('measure_wind_angle');
         await this.setCapabilityOptions('measure_wind_angle', {
-            decimals: 2,
+            decimals: 1,
             units: '\u00B0',
             title: {
                 en: 'Sun angle',
@@ -182,6 +185,16 @@ class SolarDevice extends Homey.Device {
             title: {
                 en: 'Corrected luminance now',
                 nl: 'Aangepaste helderheid nu',
+            },
+        });
+
+        await this.addCapability('measure_gust_angle');
+        await this.setCapabilityOptions('measure_gust_angle', {
+            decimals: 0,
+            units: '\u00B0',
+            title: {
+                en: 'Sun azimuth',
+                nl: 'Zon azimut',
             },
         });
 
@@ -209,14 +222,14 @@ class SolarDevice extends Homey.Device {
 
         const sunConditionMore = this.homey.flow.getConditionCard('sun_more_less');
         sunConditionMore.registerRunListener(async (args: SunConditionMore) => {
-            const average = await this.getAverageValue(args.duration);
+            const average = this.getAverageValue(args.duration);
 
             return average > args.radiation;
         });
 
         const sunConditionBetween = this.homey.flow.getConditionCard('sun_range');
         sunConditionBetween.registerRunListener(async (args: SunConditionBetween) => {
-            const average = await this.getAverageValue(args.duration);
+            const average = this.getAverageValue(args.duration);
 
             return (args.radiationLow < average) && (average < args.radiationHigh);
         });

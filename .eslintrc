@@ -5,6 +5,7 @@
     "strict": "off",
     "import/no-extraneous-dependencies": "off",
     "no-trailing-spaces": "off",
-    "@typescript-eslint/no-non-null-assertion": "off"
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "linebreak-style": ["warn", "windows"]
   }
 }
