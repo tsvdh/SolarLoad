@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Homey from 'homey';
 import { Collection, MongoClient } from 'mongodb';
+import * as https from 'node:https';
 import * as SunCalc from 'suncalc';
 
 type SunConditionMore = {
@@ -24,11 +25,11 @@ class SolarDevice extends Homey.Device {
 
     // get value every minute, store values of last hour
 
-    dataURL = 'https://www.weerzoetermeer.nl/clientraw/clientraw.txt';
-    dbURI = `mongodb+srv://admin:${Homey.env.MONGO_PASSWORD}@cluster0.jwqp0hp.mongodb.net/?retryWrites=true&w=majority`
+    dataURL = 'https://www.zoeterweer.nl/test/downld02.txt';
+    dbURI = `mongodb+srv://admin:${Homey.env.MONGO_PASSWORD}@cluster0.jwqp0hp.mongodb.net/?retryWrites=true&w=majority`;
 
-    lat = 52.061187262688705
-    lng = 4.493821243730712
+    lat = 52.061187262688705;
+    lng = 4.493821243730712;
 
     solarCollection: Collection<Measurement> | undefined;
 
@@ -37,8 +38,8 @@ class SolarDevice extends Homey.Device {
     timeFrames = [5, 10, 15, 30, 60];
 
     correctionPoints = new Map<number, number>([
-        [5, 5],
-        [10, 4],
+        [5, 4],
+        [10, 3.5],
         [15, 3],
         [20, 2.5],
         [25, 2],
@@ -104,13 +105,20 @@ class SolarDevice extends Homey.Device {
         const angleDiff = angleAbove - angleBelow;
         const ratio = angleDiff === 0 ? 0 : (angle - angleBelow) / angleDiff;
 
-        this.log(ratio);
-
         return belowMult + ratio * (aboveMult - belowMult);
     }
 
     async refreshState(dataText: string) {
-        let newValue = parseFloat(dataText.split(' ')[127]);
+        const measureMoments = dataText.split('\n');
+        const latestMoment = measureMoments[measureMoments.length - 2];
+
+        let newValue = parseInt(
+            latestMoment
+                .split(' ')
+                .filter((el) => el !== '')
+                .at(19)!,
+            10,
+        );
 
         if (Number.isNaN(newValue)) {
             return;
@@ -209,6 +217,12 @@ class SolarDevice extends Homey.Device {
         this.solarCollection = db.collection<Measurement>('Solar');
 
         this.log('Connected to DB');
+
+        axios.defaults.httpsAgent = new https.Agent({
+            rejectUnauthorized: false,
+        });
+
+        this.log('Axios agent has "rejectUnauthorized" disabled');
 
         const updater = async () => {
             const res = await axios.get<string>(this.dataURL);
