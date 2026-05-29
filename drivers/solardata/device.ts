@@ -1,8 +1,9 @@
-import axios from 'axios';
 import Homey from 'homey';
 import { Collection, MongoClient } from 'mongodb';
-import * as https from 'node:https';
+// import * as https from 'node:https';
 import * as SunCalc from 'suncalc';
+// eslint-disable-next-line import/extensions,import/no-unresolved,node/no-missing-import,object-curly-newline
+import { CorrectedSolarSource, SolarPanels, SolarSourceStatus, WeerZoetermeer, ZoeterWeer } from './solar_source';
 
 type SunConditionMore = {
     duration: number;
@@ -25,28 +26,21 @@ class SolarDevice extends Homey.Device {
 
     // get value every minute, store values of last hour
 
-    dataURL = 'https://www.zoeterweer.nl/test/downld02.txt';
     dbURI = `mongodb+srv://admin:${Homey.env.MONGO_PASSWORD}@cluster0.jwqp0hp.mongodb.net/?retryWrites=true&w=majority`;
+
+    solarSources = new Map<string, CorrectedSolarSource>();
 
     lat = 52.061187262688705;
     lng = 4.493821243730712;
 
     solarCollection: Collection<Measurement> | undefined;
+    solarPanelCollection: Collection<Measurement> | undefined;
 
     measurementsCache: Measurement[] = [];
 
     timeFrames = [5, 10, 15, 30, 60];
 
-    correctionPoints = new Map<number, number>([
-        [5, 4],
-        [10, 3.5],
-        [15, 3],
-        [20, 2.5],
-        [25, 2],
-        [45, 1.33],
-    ]);
-
-    getAverageValue(duration: number) : number {
+    getAverageCacheValue(duration: number) : number {
         duration = Math.min(duration, this.measurementsCache.length);
 
         const wantedValues = this.measurementsCache.slice(0, duration);
@@ -60,7 +54,7 @@ class SolarDevice extends Homey.Device {
         return average;
     }
 
-    async addToDB(measurement: number) {
+    async addToSolarCollection(measurement: number) {
         await this.solarCollection!.insertOne({
             value: measurement,
             location: 'Zoetermeer',
@@ -68,101 +62,100 @@ class SolarDevice extends Homey.Device {
         });
     }
 
-    async getDBValues(): Promise<Measurement[]> {
+    async getSolarCollectionValues(): Promise<Measurement[]> {
         const documents = await this.solarCollection!.find({ location: 'Zoetermeer' }).toArray();
         return documents
             .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     }
 
-    getCorrectionValue(angle: number): number {
-        let minAngle = Number.MAX_SAFE_INTEGER;
-        let maxAngle = Number.MIN_SAFE_INTEGER;
-
-        this.correctionPoints.forEach((value, key) => {
-            if (key < minAngle) {
-                minAngle = key;
-            }
-            if (key > maxAngle) {
-                maxAngle = key;
-            }
-        });
-
-        let angleBelow = minAngle;
-        let angleAbove = maxAngle;
-
-        this.correctionPoints.forEach((value, key) => {
-            if (key > angleBelow && key <= angle) {
-                angleBelow = key;
-            }
-            if (key < angleAbove && key >= angle) {
-                angleAbove = key;
-            }
-        });
-
-        const belowMult = this.correctionPoints.get(angleBelow)!;
-        const aboveMult = this.correctionPoints.get(angleAbove)!;
-
-        const angleDiff = angleAbove - angleBelow;
-        const ratio = angleDiff === 0 ? 0 : (angle - angleBelow) / angleDiff;
-
-        return belowMult + ratio * (aboveMult - belowMult);
-    }
-
-    async refreshState(dataText: string) {
-        const measureMoments = dataText.split('\n');
-        const latestMoment = measureMoments[measureMoments.length - 2];
-
-        let newValue = parseInt(
-            latestMoment
-                .split(' ')
-                .filter((el) => el !== '')
-                .at(19)!,
-            10,
-        );
-
-        if (Number.isNaN(newValue)) {
-            return;
-        }
-
-        await this.setCapabilityValue('measure_luminance', newValue);
-
+    async refreshState() {
         let angleDegrees = SunCalc.getPosition(new Date(), this.lat, this.lng).altitude;
         angleDegrees *= 180 / Math.PI;
         angleDegrees = Math.max(0, angleDegrees);
         await this.setCapabilityValue('measure_wind_angle', angleDegrees);
-
-        newValue *= this.getCorrectionValue(angleDegrees);
-        await this.addToDB(newValue);
-        await this.setCapabilityValue('measure_luminance.corrected', newValue);
 
         let azimuthDegrees = SunCalc.getPosition(new Date(), this.lat, this.lng).azimuth * (180 / Math.PI);
         // convert to suncalc website convention
         azimuthDegrees = (azimuthDegrees + 180) % 360;
         await this.setCapabilityValue('measure_gust_angle', azimuthDegrees);
 
-        this.measurementsCache = await this.getDBValues();
+        let finalValue = 0;
+        for (const name of ['SolarPanels', 'WeerZoetermeer', 'ZoeterWeer']) {
+            const res = await this.solarSources.get(name)!.getAndCheckCorrectedLoad();
+
+            const isError = res[0] === SolarSourceStatus.Error;
+            await this.setCapabilityValue(`alarm_generic.${name}`, isError);
+
+            await this.setCapabilityValue(`measure_luminance.${name}_actual`, res[1]);
+            await this.setCapabilityValue(`measure_luminance.${name}_corrected`, res[2]);
+
+            await this.setCapabilityValue(`measure_power.${name}`, Number(isError));
+
+            if (!isError) {
+                finalValue = res[2];
+            }
+        }
+
+        await this.addToSolarCollection(finalValue);
+        await this.setCapabilityValue('measure_luminance.final', finalValue);
+
+        this.measurementsCache = await this.getSolarCollectionValues();
 
         for (const timeFrame of this.timeFrames) {
-            await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageValue(timeFrame));
+            await this.setCapabilityValue(`measure_luminance.${timeFrame}min`, this.getAverageCacheValue(timeFrame));
         }
+    }
+
+    solarSourceNameToLang(name: string) {
+        let nameEn = name;
+        let nameNl = name;
+        if (name === 'SolarPanels') {
+            nameEn = 'Solar Panels';
+            nameNl = 'Zonnepanelen';
+        }
+        return [nameEn, nameNl];
     }
 
     /**
      * onInit is called when the device is initialized.
      */
     async onInit() {
+        // for (const name of this.getCapabilities()) {
+        //     await this.removeCapability(name);
+        // }
+
         const options = {
             decimals: 0,
             units: 'W/m\u00B2',
         };
 
-        await this.setCapabilityOptions('measure_luminance', {
+        await this.addCapability('measure_luminance.final');
+        await this.setCapabilityOptions('measure_luminance.final', {
             ...options,
             title: {
-                en: 'Luminance now',
-                nl: 'Helderheid nu',
+                en: 'Final radiance now',
+                nl: 'Uiteindelijke straling nu',
             },
         });
+
+        for (const name of ['SolarPanels', 'WeerZoetermeer', 'ZoeterWeer']) {
+            for (const type of ['actual', 'corrected']) {
+                const [nameEn, nameNl] = this.solarSourceNameToLang(name);
+                const typeNl: string = type === 'actual' ? 'echt' : 'corrigeerd';
+
+                const id = `measure_luminance.${name}_${type}`;
+                await this.addCapability(id);
+
+                await this.setCapabilityOptions(id, {
+                    ...options,
+                    title: {
+                        en: `Radiance ${nameEn} ${type}`,
+                        nl: `Straling ${nameNl} ${typeNl}`,
+                    },
+                    uiComponent: null,
+                });
+            }
+        }
 
         for (const timeFrame of this.timeFrames) {
             const id = `measure_luminance.${timeFrame}min`;
@@ -171,9 +164,36 @@ class SolarDevice extends Homey.Device {
             await this.setCapabilityOptions(id, {
                 ...options,
                 title: {
-                    en: `Luminance ${timeFrame} min`,
-                    nl: `Helderheid ${timeFrame} min`,
+                    en: `Radiance ${timeFrame} min`,
+                    nl: `Straling ${timeFrame} min`,
                 },
+                uiComponent: null,
+            });
+        }
+
+        for (const name of ['SolarPanels', 'WeerZoetermeer', 'ZoeterWeer']) {
+            const [nameEn, nameNl] = this.solarSourceNameToLang(name);
+
+            await this.addCapability(`alarm_generic.${name}`);
+            await this.setCapabilityOptions(`alarm_generic.${name}`, {
+                title: {
+                    en: `${nameEn} status`,
+                    nl: `${nameNl} status`,
+                },
+            });
+
+            await this.addCapability(`measure_power.${name}`);
+            await this.setCapabilityOptions(`measure_power.${name}`, {
+                units: 'Y/N',
+                decimals: 0,
+                min: 0,
+                max: 1,
+                step: 1,
+                title: {
+                    en: `${name === 'SolarPanels' ? nameEn : name} status number`,
+                    nl: `${name === 'SolarPanels' ? nameNl : name} status number`,
+                },
+                uiComponent: null,
             });
         }
 
@@ -184,15 +204,6 @@ class SolarDevice extends Homey.Device {
             title: {
                 en: 'Sun angle',
                 nl: 'Zon hoek',
-            },
-        });
-
-        await this.addCapability('measure_luminance.corrected');
-        await this.setCapabilityOptions('measure_luminance.corrected', {
-            ...options,
-            title: {
-                en: 'Corrected luminance now',
-                nl: 'Aangepaste helderheid nu',
             },
         });
 
@@ -211,22 +222,22 @@ class SolarDevice extends Homey.Device {
         const client = new MongoClient(this.dbURI);
         await client.connect();
 
-        const db = client.db('Measurements');
-        await db.command({ ping: 1 });
+        const measurementsDB = client.db('Measurements');
+        await measurementsDB.command({ ping: 1 });
 
-        this.solarCollection = db.collection<Measurement>('Solar');
+        this.solarCollection = measurementsDB.collection<Measurement>('Solar');
+        this.solarPanelCollection = measurementsDB.collection<Measurement>('SolarPanels');
 
         this.log('Connected to DB');
 
-        axios.defaults.httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-
-        this.log('Axios agent has "rejectUnauthorized" disabled');
+        this.solarSources = new Map([
+            ['WeerZoetermeer', new WeerZoetermeer(this) as CorrectedSolarSource],
+            ['ZoeterWeer', new ZoeterWeer(this) as CorrectedSolarSource],
+            ['SolarPanels', new SolarPanels(this, this.solarPanelCollection) as CorrectedSolarSource],
+        ]);
 
         const updater = async () => {
-            const res = await axios.get<string>(this.dataURL);
-            await this.refreshState(res.data);
+            await this.refreshState();
         };
 
         await updater();
@@ -236,16 +247,26 @@ class SolarDevice extends Homey.Device {
 
         const sunConditionMore = this.homey.flow.getConditionCard('sun_more_less');
         sunConditionMore.registerRunListener(async (args: SunConditionMore) => {
-            const average = this.getAverageValue(args.duration);
+            const average = this.getAverageCacheValue(args.duration);
 
             return average > args.radiation;
         });
 
         const sunConditionBetween = this.homey.flow.getConditionCard('sun_range');
         sunConditionBetween.registerRunListener(async (args: SunConditionBetween) => {
-            const average = this.getAverageValue(args.duration);
+            const average = this.getAverageCacheValue(args.duration);
 
             return (args.radiationLow < average) && (average < args.radiationHigh);
+        });
+
+        const setPower = this.homey.flow.getActionCard('set-power');
+        setPower.registerRunListener(async (value) => {
+            const measurement = parseInt(value.watt, 10);
+            await this.solarPanelCollection!.insertOne({
+                value: measurement,
+                location: 'Tweede Stationsstraat',
+                timestamp: new Date(),
+            });
         });
 
         this.log(`${this.getName()} has been initialized`);

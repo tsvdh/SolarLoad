@@ -37,7 +37,7 @@
           "min": 0,
           "max": 1000,
           "step": 20,
-          "label": " W/m\u00B2"
+          "label": " W/m²"
         }
       ]
     },
@@ -55,7 +55,7 @@
         "en": "The amount of sun in Zoetermeer for the last hour or less",
         "nl": "The hoeveelheid zon in Zoetermeer tijdens het afgelopen uur of korter"
       },
-      "args" : [
+      "args": [
         {
           "type": "range",
           "name": "duration",
@@ -78,7 +78,7 @@
           "min": 0,
           "max": 1000,
           "step": 20,
-          "label": " W/m\u00B2"
+          "label": " W/m²"
         },
         {
           "type": "range",
@@ -90,7 +90,28 @@
           "min": 0,
           "max": 1000,
           "step": 20,
-          "label": " W/m\u00B2"
+          "label": " W/m²"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "set-power",
+      "title": {
+        "en": "Set power to",
+        "nl": "Vermogen instellen op"
+      },
+      "args": [
+        {
+          "type": "number",
+          "name": "watt",
+          "placeholder": {
+            "en": "power"
+          },
+          "min": 0,
+          "max": 10000,
+          "step": 1
         }
       ]
     }
