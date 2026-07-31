@@ -118,12 +118,11 @@ export abstract class CorrectedSolarSource extends SolarSource {
 export abstract class WeatherStation extends CorrectedSolarSource {
 
     private correctionPoints = new Map<number, number>([
-        [5, 4],
-        [10, 3.5],
-        [15, 3],
-        [20, 2.5],
+        [10, 3],
+        [15, 2.5],
         [25, 2],
-        [45, 1],
+        [40, 1.5],
+        [50, 1],
     ]);
 
     protected getCorrectionPoints(): Map<number, number> {
@@ -203,10 +202,8 @@ export class SolarPanels extends CorrectedSolarSource {
     private solarPanelCollection: Collection<Measurement>;
 
     private correctionPoints = new Map<number, number>([
-        [5, 4],
-        [10, 3.5],
-        [15, 3],
-        [20, 2.5],
+        [10, 3],
+        [15, 2.5],
         [25, 2],
         [45, 1],
     ]);
